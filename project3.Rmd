@@ -1,0 +1,1550 @@
+Loan Data from Propser by Tan Kwok Wee
+========================================================
+
+# Abstract
+
+Prosper is America's first peer to peer lending marketplace,  
+with more than 2 million members and 2 trillion in funded loans.  
+I had downloaded the dataset from udacity data options list,  
+it contains 113,937 rows and 81 variables for each rows.  
+As an amatuer investor, i am curious about feasibility of investing in Prosper loans.
+
+I will explore the dataset futher to better understand if it will be a  
+viable finanical investment.  
+I hope that my analysis can address the following  
+* What is the Reward ? : Are the loans profitable?  
+* What is the Risk ? : Which profiles best predict a borrower will not default?  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# Load all of the packages that you end up using
+# in your analysis in this code chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk.
+# This prevents the code from displaying in the knitted HTML output.
+# You should set echo=FALSE for all code chunks in your file.
+
+library(ggplot2)
+library(GGally)
+library(maps)
+library(mapproj)
+library(raster)
+library(dplyr)
+library(reshape)
+library(plyr)
+library(chron)
+library(scales)
+library(Hmisc)
+library(lattice)
+```
+
+# Load the Data
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ld <- read.csv("C:\\Users\\212369277\\Downloads\\prosperLoanData.csv")
+ld$Term <- as.factor(ld$Term)
+ld$LoanOriginationDate <- as.Date(ld$LoanOriginationDate)
+ld$LoanOriginationYear <- years(ld$LoanOriginationDate)
+ld$LoanOriginationMonth <- as.factor(months(ld$LoanOriginationDate))
+ld$LoanOriginationMonth <- factor(ld$LoanOriginationMonth,
+                                  levels=c("January","February","March",
+                                           "April","May","June",
+                                           "July","August","September",
+                                           "October","November","December"))
+ld$BorrowerState  <- as.character(ld$BorrowerState )
+states_map <- map_data("state")
+```
+
+# Summary of data
+The dataset consists of 113,937 rows. For each row there are 81 varibles.  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# number of varaibles in the dataset
+length(ld)
+# number of rows in the dataset
+length(ld$ListingKey)
+
+```
+The below details the names, type and contents of the features which we will be investigating in this project.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+str(subset(ld, 
+           select=c("CreditGrade","Term","LoanStatus",
+                    "BorrowerRate","LenderYield",
+                    "EstimatedLoss","ProsperRating..Alpha.",
+                    "BorrowerState","Occupation","EmploymentStatus",
+                    "EmploymentStatusDuration","CurrentDelinquencies",
+                    "DelinquenciesLast7Years","PublicRecordsLast10Years",
+                    "DebtToIncomeRatio","StatedMonthlyIncome",
+                    "IncomeRange","LoanOriginationDate"))
+    )
+```
+the below provides a summary of the features which we will be investigating in this project.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+summary(subset(ld, 
+           select=c("CreditGrade","Term","LoanStatus",
+                    "BorrowerRate","LenderYield",
+                    "EstimatedLoss","ProsperRating..Alpha.",
+                    "BorrowerState","Occupation","EmploymentStatus",
+                    "EmploymentStatusDuration","CurrentDelinquencies",
+                    "DelinquenciesLast7Years","PublicRecordsLast10Years",
+                    "DebtToIncomeRatio","StatedMonthlyIncome",
+                    "IncomeRange","LoanOriginationDate"))
+        )
+```
+
+Next lets investigate, the levels defined for   
+
+* EmployementStatus  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+levels(ld$EmploymentStatus)
+```
+* CreditGrade  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+levels(ld$CreditGrade)
+```
+* Occupation  
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+levels(ld$Occupation)
+```
+* loanstatus  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+levels(ld$LoanStatus)
+```
+
+Range for loanOriginationDate  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+range(ld$LoanOriginationDate)
+```
+
+# Univariate Plots Section
+
+I start by checking the loan status of the borrowers in the dataset.  
+this will help me understand the on a high level the potential risk of default.  
+
+## Loan Status
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=7}
+
+ggplot(data=ld, aes(x=LoanStatus, ymax = max(..count..)+5000)) + 
+  geom_bar()  + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) + 
+    stat_bin(geom="text", 
+             aes(label=..count.., vjust = -0.5 , position="dodge")
+             ) 
+
+summary(ld$LoanStatus)
+
+```
+
+The dataset captures loans taken from 15-Nov-2005 to 12-Mar-2014.  
+In the dataset 56,576 borrowers are servicing the loans, 38,074 completed their loans and 205 making final payments.  
+From the plot we can see that  
+* 5,018 - defaulted  
+* 11,992 - Charged off  
+* 2,064 ( 16 + 806 + 265 + 363 + 313 + 304 )loans are Past due date.  
+
+In total, 19,074 loans are either defaulted, charged-off or past date due, constiuting 16.7% of the total loans in the dataset.  
+
+By eliminating existing borrowers from the datset,  
+* 66% of the borrowers had either already completed the loans or making final payments  
+
+* 34% either defaulted/charged off or late in payments  
+
+This plot brings encouragement that investing in prosper loans might be an viable investment,  
+if we can understand which profiles are likely to default.  
+
+Next, let's review the loan amount requested.  
+
+## Loan Original Amount
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data=ld, aes(x=LoanOriginalAmount)) + geom_density()
+
+head(sort(table(ld$LoanOriginalAmount), decreasing=TRUE))
+```
+
+We can see that most loans taken are about $4000, $15000 ,$10000, $5000, $2000 and $3000.  
+This shows that people like to borrow in round amounts.  
+
+I feel that the amounts borrowed are not huge and should be manageable if the user have a source of income.  
+
+next, let us understand the borrower rate.
+
+## Borrower Rate
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+
+ggplot(data=ld,aes(x=BorrowerRate*100, 
+                   ymax = max(..count..)+5000)) + 
+  scale_x_continuous(limits=c(0,38), breaks=seq(0,38,1)) + 
+  geom_bar(color="darkgreen", fill="white") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) + 
+  stat_bin(geom="text", aes(label=..count.., hjust = -0.1, angle=90)) 
+
+summary(ld$BorrowerRate)
+
+```
+
+by changing the breaks of the x-axis scale, we can determine that most of the borrowers borrowed at rate of 14 percent.  
+the mean borrowing rate is 18.4 percent and  the max. borrowing rate is 49.75 percent.  
+I guess that the rate at which the borrowers get their loan might depend on their employement status, credit profile and some other factors.  
+let's check the employment status of the borrowers  
+
+## Employment Status
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=7}
+
+ggplot(data=ld, aes(x=EmploymentStatus, ymax=max(..count..)+5000)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., vjust=-1)) + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) 
+  
+
+```
+
+Based on the plot, we can see that  
+
+* 2,255 borrowers have no employment status  
+* 5,347 with employment status as "Not available"  
+* 835 not employed  
+
+It is interesting that 8,437 people having "Not available" or "Not Employed" as employement status obtaining loans.  
+
+Lets check income range of the borrowers in the dataset.  
+
+## Income Range - General
+```{r echo=FALSE, message=FALSE, warning=FALSE,fig.width=7, fig.height=8}
+ggplot(data=ld, aes(x=IncomeRange)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., vjust=-0.5 )) 
+```
+
+In general,most of the borrower's income ranges from 25,000 to 75,000.  
+It was suprisingly to see 621 borrowers having $0 income obtaining loans.      
+Next, let's review the monthly stated income  
+
+## Stated Monthly Income
+```{r echo=FALSE, message=FALSE, warning=FALSE,fig.width=7, fig.height=8}
+
+ggplot(data=ld, aes(x=StatedMonthlyIncome,ymax = max(..count..)+500)) + 
+  geom_bar(color="darkgreen", fill="white") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5,hjust=1))+ 
+  scale_x_continuous(limits=c(0,10000), breaks=seq(0,10000,500)) + 
+  stat_bin(geom="text", aes(label=..count.., hjust=-0.1, angle = 90)) 
+
+head(sort(table(ld$StatedMonthlyIncome), decreasing=TRUE))
+
+```
+Most of the borrowers are have stated 3333 to 5833 as their monthly income.
+
+next lets check the creditgrade of the borrowers profile.
+
+## Credit Grade
+```{r echo=FALSE, message=FALSE, warning=FALSE,, fig.width=6, fig.height=7}
+
+ld$CreditGrade <- factor(ld$CreditGrade, 
+                         levels=c("AA","A","B",
+                                  "C","D","E",
+                                  "HR","NC",""))
+
+
+ggplot(data=ld, aes(x=CreditGrade, ymax=max(..count..)+5000)) + 
+  geom_bar() + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.3, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., vjust=-1)) 
+
+head(sort(table(ld$CreditGrade), decreasing=TRUE))
+
+
+```
+
+We can see that majority of the borrowers (84,934) or approximately 75% of the dataset are without a credit Grade.  
+
+It has noted that the datafield is populated pre-2009 and only be available for those listing.  
+Most of the borrowers are having "C" as creditGrade in the dataset.
+
+so Lets check the ProsperRating..Alpha., which is the field used after jul-2009 to track borrower's credit rating
+
+## Prosper Loan Rating Alpha
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=7}
+
+ld$ProsperRating..Alpha. <- factor(ld$ProsperRating..Alpha., 
+                                   levels=c("AA","A","B",
+                                            "C","D","E",
+                                            "HR","NC",""))
+
+ggplot(data=ld, 
+       aes(x=ProsperRating..Alpha., ymax = max(..count..)+5000)) + 
+  geom_bar() +   
+  scale_y_log10(breaks = trans_breaks( "log10", function(x) 10^x ), 
+                labels = trans_format( "log10",  
+                                       trans = math_format(10^.x))) +   
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., vjust=-1)) 
+
+head(sort(table(ld$ProsperRating..Alpha.), decreasing=TRUE))
+
+ld.withoutCredit <- subset(ld, 
+                           ld$ProsperRating..Alpha. =="" & 
+                             ld$CreditGrade =="",
+                           select=c("LoanOriginationDate",
+                                    "ProsperRating..Alpha.",
+                                    "CreditGrade") )
+
+table(factor(format(ld.withoutCredit$LoanOriginationDate,"%Y")))
+```
+
+from the plot we can see that The median prosper rating alpha is C.  
+We can see that 29,084 loans are without prosper rating alpha.  
+In total 84,853 borrowers are assigned with prosper rating alpha.  
+
+we also can see that there are 99 borrowers are without ProsperRating..Alpha. or Credit Grade.  
+It is curious that missing creditgrade and prosper rating alpha is only happening from 2009 to 2010.  
+I wonder what is the cause?  
+
+Let us check if the borrowers are over-leveraged by checking debit-to-income ratio.   
+
+## Debt to Income Ratio
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ggplot(data=ld, aes(x=DebtToIncomeRatio)) + geom_bar() 
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=8}
+
+ggplot(data=ld, 
+       aes(x=DebtToIncomeRatio, ymax = max(..count..) + 30000 )) + 
+  geom_bar(bindwidth=1,color="darkgreen", fill="white") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=0.5)) +   
+  scale_x_continuous(limits=c(0,2.5),breaks=seq(0,2.5,0.1)) + 
+  scale_y_log10(breaks = trans_breaks( "log10", function(x) 10^x ), 
+                labels = trans_format( "log10",  
+                                       trans = math_format(10^.x))) +   
+  stat_bin(geom="text", aes(label=..count.., hjust=-0.2, angle=90)) 
+
+head(sort(table(ld$DebtToIncomeRatio), decreasing=TRUE))
+```
+
+from the plot, we can see that most of the borrowers are having debt to income ratio below 1.0  
+there are some outlier data, showing that borrowers with debt to income ratio of 10.01.  
+I had limited the maximium Debt to Income ratio to be 2.5 and re-plotted the data.  
+We can see a left skew distribution and most of the borrowers have debt to income ratio of 0.2.   
+
+We can see that most borrowers have debt to income ratio of 0.14 to 0.2.  
+I am pleased to see that most borrowers have low debt to income ratio.  
+i wonder does low debt to income ratio will correspond with credit grade.   
+
+## Term
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=Term, ymax = max(..count..)+5000)) + 
+  geom_bar() + 
+  scale_y_log10(breaks = trans_breaks( "log10", function(x) 10^x ), 
+                labels = trans_format( "log10",  
+                                       trans = math_format(10^.x))) +   
+  stat_bin(geom="text", aes(label=..count.., vjust=-0.5)) 
+
+```
+
+we can see that most of the loans are taken with term of 36 months.  
+lets check when the loans happened  
+
+## Loan Origination Year
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=LoanOriginationYear)) + geom_bar() 
+
+summary(ld$LoanOriginationYear)
+```
+
+We can see that there is significant drop in loans taken after 2008.  
+After 2009, more people are taking loans.  
+let's check if there is people take more loans in particular months by creating a plot of Loan Oringation Date by formatting the date as month.  
+
+## Loan Origination Month
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=6, fig.height=7}
+ggplot(data=ld, 
+       aes(x=LoanOriginationMonth, ymax =  max(..count..)+30000)) + 
+  geom_bar() + 
+  scale_y_log10(breaks = trans_breaks( "log10", function(x) 10^x ), 
+                labels = trans_format( "log10",  
+                                       trans = math_format(10^.x)
+                                       )) +   
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., hjust = -0.2, angle = 90)) 
+
+summary(ld$LoanOriginationMonth)
+```
+
+We can see that March, April, May has the lowest number of loan taken.  
+Borrowers then to take more loans in Janurary and October.  
+Let's check if we modify the loan origination date as month-year date format what will the distribution.  
+
+## Loan Origination date as Month-year date format
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=9, fig.height=8}
+
+ggplot(data=ld, aes(x=LoanOriginationDate)) + 
+  geom_bar(binwidth=2) + 
+  scale_x_date(breaks = date_breaks(width = "months"), 
+               labels = date_format("%b-%y")) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) 
+
+```
+
+plotting the loan oringination date using month-year format, we can see an increase in loan happened after May 2013.  
+I wonder if there was any specifc event that cause the rapid increase of loans taken?  
+let check the states where the borrower's live and their occupation next.  
+
+## Borrower State
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=BorrowerState)) + 
+  geom_bar() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+we can see that most of the borrowers live in CA, NY, TX, FL and IL.  
+
+## Occupation
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=Occupation)) + 
+  geom_bar() + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+head(sort(table(ld$Occupation),decreasing=TRUE))
+head(sort(table(ld$Occupation),decreasing=FALSE))
+```
+
+Top 5 borrowers Occupation (excluding Other) are  
+* professional (13628)  
+* computer programmer (4478)  
+* executive (4311)  
+* Teacher (3759)  
+* administrative assistant (3588)      
+let us check what are the top reasons for taking loans  
+
+## Listing Category
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=8, fig.height=8}
+ggplot(data=ld, 
+       aes(x=ListingCategory..numeric.,
+           y=..count..,
+           ymax = max(..count..)+2000)) + 
+  geom_bar() + 
+  scale_x_continuous(breaks=seq(0,20,1), 
+                     labels=c("Not Available", "Debt Consolidation", 
+                              "Home Improvement","Business",
+                              "Personal Loan","Student Use",
+                              "Auto","Other","Baby&Adoption",
+                              "Boat","Cosmetic Procedure",
+                              "Engagement Ring","Green Loans",
+                              "Household Expenses","Large Purchases",
+                              "Medical/Dental","Motorcycle",
+                              "RV","Taxes","Vaction","Wedding Loans")) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  scale_y_continuous(limits=c(0,20000), breaks = seq(0,20000,2000)) + 
+  stat_bin(geom="text", aes(label=..count.., hjust=-0.1, angle=90)) + 
+  xlab("Listing Category")
+
+```
+
+we can see that majority of the loans are for  
+* Debt Consolidation (58,308)  
+* Others(10,494)  
+* Home Improvement (7,433)  
+* Business 7189
+
+There is a huge portion (16,965) of the loans with listing status as "Not Available"
+
+## Total Proper Loans
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=7, fig.height=8}
+
+ld$TotalProsperLoans <- as.factor(ld$TotalProsperLoans)
+
+ggplot(data=ld, aes(x = TotalProsperLoans, ymax = max(..count..) + 500,
+                    ymin = min(..count..))) + 
+  geom_bar(bindwidth=1) 
+
+sort(table(ld$TotalProsperLoans),decreasing=TRUE)
+
+```
+
+we can understand from the plot that most of the borrowers have only 1 prosper loan.  
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+There are 113,937 listings in the dataset with 83 features.  
+I had chosen to analyze the below stated features   
+
+* LoanOriginalAmount  
+* Credit Grade or ProsperRating..Alpha.  
+* stated monthly income  
+* Debt to Income Ratio  
+* Total Prosper Loans  
+* Current Delinquencies  
+* Delinquencies past 7 years  
+* Borrower Rate  
+* Income Range  
+* LoanOriginationDate  
+* Occupation  
+* Employment Status  
+* Total Prosper Loans  
+
+below describes the ranking of levels of the features explored  
+
+(Worst to Best)  
+
+Credit Grade : NC HR E D C B A AA  
+
+Income Range : 
+* Not employed  
+* $0  
+* $1-$24,999  
+* $25,000-$49,999  
+* $50,000 - $74,999  
+* $75,000 - $99,999  
+* $100,000+  
+* Not displayed  
+
+ProsperScore Alpha : NC HR E D C B A AA  
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The main features of the data set are CreditGrade/Propser Score Alpha, Borrower Rate, Debt to income ratio, Monthly Stated Income and Total prosper loan.   
+
+I will want to explore what features will impact the borrower rate.  
+
+### What other features in the dataset do you think will help support your investigation into your feature(s) of interest?
+
+I believe related features like Current Delinquencies  
+, Delinquencies past 7 years can help support my investigation  
+
+### Did you create any new variables from existing variables in the dataset?
+
+I created variable LoanOriginationYear by formatting the LoanOriginationDate to display year.  
+
+I create varaible LoanOriginationMOnth by formatting the LoanOriginationDate to display month.  
+
+### Of the features you investigated, were there any unusual distributions? Did you perform any operations on the data to tidy, adjust, or change the form of the data? If so, why did you do this?
+
+I found that feature Loan Orgination date has unusual distribution.  
+
+when ploting the Loan Origination month histogram,  
+i can see a slight "concave" distribution.  
+Therefore, i converted the month into month-year date format and re-plotted the histogram.  
+We can now see that the month-year date format depicts distribution skewed towards the right.  
+We can determine that there was an increased amount of loans are taken May 2013.  
+
+# Bivariate Plots Section
+
+to get an overview of the relationship between identified featuresets,  
+i use ggpairs to generate a summary of plots of features on a small sample size of 10,000 records.  
+
+## Correlation Analysis
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=12, fig.height=12}
+
+set.seed(20150508)
+ld.sample <- ld[sample(1:length(ld$LoanOriginalAmount),10000),]
+ld.sample$TotalProsperLoans <- as.numeric(ld.sample$TotalProsperLoans)
+
+ld.sample[is.na(ld.sample)] <- 0
+
+ld.sample <- subset(ld.sample, 
+                    select =c(DebtToIncomeRatio,TotalProsperLoans,
+                              StatedMonthlyIncome,
+                              BorrowerRate,LenderYield,
+                              LoanOriginalAmount,AmountDelinquent,
+                              DelinquenciesLast7Years,
+                              CurrentDelinquencies,
+                              PublicRecordsLast10Years,EstimatedLoss
+                              )
+                    )
+
+names(ld.sample) <- c("DebtRatio","Tot_Loans","Mth_Income",
+                      "Borr._Rate","LenderYield","Loan_Amt",
+                      "Amt._Deli.","Deli._7yrs","Curr._Deli.",
+                      "Pub._Recs_10yrs","Est._Loss")
+
+ggpairs(ld.sample)+ theme(axis.text = element_blank())
+
+cor(ld.sample)
+
+```
+
+From the plot, we can see a strong correlation between  
+* borrower rate and lender yield (0.99)  
+* Proper Principal Borrowed with Total prosper loans (0.81)  
+* on time propser loan payments with prosper principal borrowered (0.69)  
+
+let's focus on borrowers income range for borrowers with emmployment status as "not employed" or "no employment status".  
+
+## Income Range - employment status = Not Employed or Not available
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+levels(ld$EmploymentStatus)
+
+ggplot(data=subset(ld,
+                   ld$EmploymentStatus %in% 
+                     c("Not employed","Not available","")), 
+       aes(x=IncomeRange, ymax=max(..count..)+5000)) + 
+  geom_bar() + 
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  stat_bin(geom="text", aes(label=..count.., vjust=-1)) + 
+  facet_wrap(~EmploymentStatus)
+
+```
+
+if we subset the data for those borrowers without employment status or not available and or employed, we uncover some interesting details.  
+
+there are 11 people in this group declared they have $0 as well as having employment status as not employed obtaining loans.  
+
+there are 806 people in this group declared their income range as "not employed"" for income range as well as not employed obtaining loans.  
+
+Most of the people with income range status as "Not displayed" come from the group of people declaring their employment status as (no employment status/not available or not employed).  
+
+I wanted to know if term changes with the loan amount and decided to do a violin plot to understand the distribution.  
+
+## Term vs Loan Original Amount
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=Term,y=LoanOriginalAmount)) + geom_violin() 
+
+count(subset(ld,select=c("Term")), vars=c("Term"))
+
+head(
+  arrange(
+    count(
+      subset(ld,select=c("Term","LoanOriginalAmount")), 
+      vars=c("Term","LoanOriginalAmount")), 
+    desc(freq)
+    )
+  )
+
+```
+
+we can see that for loan amounts under 10,000, the term varies widely.  
+for loans above 30,000, we can see the term varies little.  
+
+by constructing a frequency table by term, we can see that most people opt for 36 months loans, followed by 60 months loan.  
+
+by constructing a frequency table by term and loan amount, we can see that most people opt for 36 months loans for loan of 4,000 and followed by 36 months loan for loan of 10,000. 
+
+Let's check the correlation between Term and Loan Original Amount is  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+cor(as.numeric(ld$Term), ld$LoanOriginalAmount)
+```
+
+## Loan Origination Year Vs Loan Original Amount
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=LoanOriginationYear,y=LoanOriginalAmount)) + 
+  geom_boxplot() +
+  scale_y_continuous(limits=c(0,15000), breaks=seq(0,15000,1000))
+
+head(
+  arrange(
+    count(
+      subset(ld,select=c("LoanOriginationYear","LoanOriginalAmount")),
+      vars=c("LoanOriginationYear","LoanOriginalAmount")), 
+    desc(freq)
+    )
+  )
+
+head(
+  arrange(
+    count(
+      subset(ld,
+             select=c("LoanOriginationYear","LoanOriginalAmount"), 
+             LoanOriginationYear < 2011
+             ), 
+      vars=c("LoanOriginationYear","LoanOriginalAmount")
+      ), 
+    desc(freq)
+    )
+  )
+
+```
+
+We can see that range of loans amount increases after 2011.  
+Most loan amounts requested  
+* are 15,000, 4,000 and 10,000 after 2011.  
+* are 5000 and 1000 before 2011.  
+
+Let's check the correlation between Loan Origination Year and Loan Original Amount is  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+cor(as.numeric(ld$LoanOriginationYear), ld$LoanOriginalAmount)
+```
+
+i am curious to understand which state does the bulk of the borrowers reside in.
+
+## Borrower State
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ld$state <- tolower(state.name[match(ld$BorrowerState,state.abb)])
+ld.state <-subset(ld, select=c("state"))
+ld.state <- count(ld.state,"state")
+
+ld.state[with(ld.state,order(- freq, state)),]
+
+ld.state <- merge(states_map, ld.state, by.x="region", by.y="state")
+
+ld.state <- arrange(ld.state,group,order)
+
+ggplot(ld.state, aes(x=long,y=lat, group=group, fill=freq)) + 
+  geom_polygon(color="black") + 
+  scale_fill_gradient2(low="#559999",mid="blue", high="red") + 
+  coord_map("polyconic") 
+
+head(
+  arrange(
+    distinct(
+      subset(ld.state, select = c("region","freq"))), 
+    -freq
+    )
+  )
+
+```
+
+It is clear that the bulk of borrowers live in California, Texas, New York Florida and Illinois.
+
+States like Montana, Wyomin, North Dakota, South Dakota and Maine has the least amnount of borrowers.
+
+I am curious to see the distribution of credit grade and loan amounts of borrowers living in California, Texas, New York Florida and Illinois. 
+
+## Stated Monthly Income by BorrowerState 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ld$state <- tolower(state.name[match(ld$BorrowerState,state.abb)])
+ld.state <- aggregate(StatedMonthlyIncome ~ state, data=ld, mean)
+ld.state <- merge(states_map, ld.state, by.x="region", by.y="state")
+ld.state <- arrange(ld.state,group,order)
+
+ggplot(ld.state, 
+       aes(x=long,
+           y=lat, 
+           group=group, fill=StatedMonthlyIncome)) + 
+  geom_polygon(color="black") + 
+  scale_fill_gradient2(low="#559999",mid="blue", high="red") + 
+  coord_map("polyconic") 
+
+head(
+  arrange(
+    distinct(
+      subset(ld.state,select=c("region","StatedMonthlyIncome"))), 
+        desc(StatedMonthlyIncome), 
+        region)
+  )
+```
+
+We can see that Connecticut, New Jersey, Maryland, Virginia and New York are the top 5 states with highest mean stated Monthly income.  
+When we compare with the number of loans taken (where the bulk of borrowers live in California, Texas, New York, Florida and Illinois)  
+we do not see there is a 100% correlation between top 5 loans borrowed by state vs top 5 mean statedMonthlyIncome by state.  
+
+If we check the state population estimate as of 1st July 2014 from wikipedia, we can see that the top 5 states with the biggest population corresponds with the top 5 states with number of loans. 
+
+## Borrower State ( CA, TX, NY, IL, FL ) and Percentage of CreditGrade
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ld.s.cr_grade <- subset(ld, BorrowerState %in% c("CA","TX","NY","IL","FL"),                             
+                               select=c("CreditGrade", "BorrowerState",
+                                        "LoanOriginalAmount") 
+                               )
+
+ld.s.cr_grade.CG <- c("AA","A","B","C","D","E","HR","NC")
+
+ld.s.cr_grade <- subset(ld.s.cr_grade,
+                               CreditGrade %in% ld.s.cr_grade.CG)
+
+ld.s.cr_grade$CreditGrade <- factor(ld.s.cr_grade$CreditGrade,
+                                           levels=ld.s.cr_grade.CG)
+
+ld.s.cr_grade$BorrowerState <- factor(ld.s.cr_grade$BorrowerState)
+
+# compute number of borrowers and sum of loan original amounts by state
+ld.s.cr_grade <- ddply(ld.s.cr_grade, 
+                          "BorrowerState", 
+                          transform,
+                          r_state_tot=length(BorrowerState),
+                          r_state_amt_tot=sum(LoanOriginalAmount)
+                          )
+
+# compute number of credit grade and sum of loan original amounts by state and credit grade
+ld.s.cr_grade <- ddply(ld.s.cr_grade, 
+                          c("BorrowerState","CreditGrade"), 
+                          transform,
+                          r_state_CrGrade_tot=length(CreditGrade),
+                          r_state_CrGrade_amt_tot=sum(LoanOriginalAmount))
+
+ld.s.cr_grade <- distinct(ld.s.cr_grade[ ,c("CreditGrade",
+                                                  "BorrowerState",
+                                                  "r_state_tot",
+                                                  "r_state_amt_tot",
+                                                  "r_state_CrGrade_tot",
+                                            "r_state_CrGrade_amt_tot")]
+                          )
+
+# compute percentages of percentage of borrowers for each states
+ld.s.cr_grade$percent <- ld.s.cr_grade$r_state_CrGrade_tot/
+  ld.s.cr_grade$r_state_tot
+
+# compute percentages of percentage of loan amounts by state, credit grade for each states
+ld.s.cr_grade$percent_amt <- ld.s.cr_grade$r_state_CrGrade_amt_tot/
+  ld.s.cr_grade$r_state_amt_tot
+
+ggplot(data=ld.s.cr_grade, 
+       aes(x=BorrowerState,y=percent,fill=CreditGrade)) + 
+  geom_bar(stat="identity") 
+
+#display the subset of the result
+distinct(subset(ld.s.cr_grade, CreditGrade %in% c("AA","A")))
+```
+
+New York has the highest percentage of borrowers with credit grade of AA and A, and i suspect that people there has better paying jobs then rest of the states in the histogram.
+
+## Credit Grade vs Loan Original Amount, Proper Rating Alpha vs Loan Amounts
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=subset(ld,CreditGrade !=""), 
+       aes(x=CreditGrade,y=LoanOriginalAmount)) + 
+  geom_boxplot() + 
+  scale_y_continuous(limits=c(500,8500),breaks=seq(500,8500,1000))
+
+ggplot(data=subset(ld,ProsperRating..Alpha.!=""), 
+       aes(x=ProsperRating..Alpha.,y=LoanOriginalAmount)) + 
+  geom_boxplot() + 
+  scale_y_continuous(limits=c(2000,15000),breaks=seq(2000,15000,1000))
+```
+
+In general, we can confirm that people with higher credit grade will be able to obtain higher loan amounts.
+
+## Credit Grade/ProsperRating..Alpha. vs BorrowerRate 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot( data = subset( ld, CreditGrade != ""), 
+        aes( x = CreditGrade, y = BorrowerRate*100)) + 
+  geom_boxplot() + 
+  ylim( 5 , 30 )
+
+ggplot( data = subset( ld , ProsperRating..Alpha. != "" ), 
+        aes( x = ProsperRating..Alpha. , y = BorrowerRate*100 )) + 
+  ylim( 5 , 35 ) +
+  geom_boxplot()
+
+```
+
+by plotting GreditGrade versus Borrower Rate we can see that borrowers with lower credit grade paid more interest as compared with borrowers with higher credit grade. for borrowers with lower creditgrade the Borrower Rates varies wider as compared with those having a better creditgrade.  
+
+Let's check the correlation between Credit Grade and Borrower Rate is  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+cor(as.numeric(ld$CreditGrade), ld$BorrowerRate)
+```
+
+Let's check the correlation between ProsperRating..Alpha. and Borrower Rate is  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+cor(as.numeric(ld$ProsperRating..Alpha.), ld$BorrowerRate)
+```
+
+we do see an increase in correlation for borrower rate after Prosper Rating Alpha was introduced.  
+
+## Employment Status vs BorrowerRate 
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld, aes(x=EmploymentStatus,y=BorrowerRate*100)) + 
+  geom_boxplot() + 
+  ylim(10,35)+
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+```
+
+We can see that borrowers that are "Not Employed" and "Other" have a higher borrower rate ( greater than 20%) as compared with other employment status.
+
+Let's check the correlation between Employement Status and Borrower Rate is  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+cor(as.numeric(ld$EmploymentStatus), ld$BorrowerRate)
+```
+
+there is a weak correlation between employment status and borrower rate.  
+I think maybe employment status is a factor used to compute credit grade or prosper rating alpha, therefore the correlation is low.  
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. How did the feature(s) of interest vary with other features in the dataset?
+
+we can see as loan amounts get larger the term of loan stablizes around 36 months.
+
+we can see that the range of loan amounts increases after 2011
+
+If we see the boxplots of credit grade verus Loan Origination Amount, we can see that highest credit Grade obtained more loan amounts at lower borrower rate. 
+
+There are certain outliers obtaining loan amounts of 20,000 or more despite having a bad credit rating.
+
+We can see that people that are employed requested for bigger loan amounts as compared with other employment status.
+
+There is a linear relationship between borrower rate and lender yield, increase in borrower rate corresponds with an increase with lender yield.
+
+we can also see that borrowers with the Best credit grade enjoy lowest borrower rate.
+
+### Did you observe any interesting relationships between the other features (not the main feature(s) of interest)?
+
+In the plot of BorrowerState vs CreditGrade, we can observe that people in NY has better credit grade than the rest of the states ( CA, FL, IL, TX)
+
+### What was the strongest relationship you found?
+
+the strongest relationships i found is between borrower yield and lender rate
+they have the correlation of 99.9%
+
+# Multivariate Plots Section
+
+Let us check the distirbution of loan amounts by Credit Grade and borrower State for (CA, TX, NY, IL, FL)
+
+## Borrower State ( CA, TX, NY, IL, FL ) and CreditGrade and Percentage of Loan Amount 
+```{r echo=FALSE}
+ggplot(data=ld.s.cr_grade, 
+       aes(x=BorrowerState,y=percent_amt,fill=CreditGrade)) + 
+  geom_bar(stat="identity") 
+
+head(ld.s.cr_grade)
+
+```
+
+We can see that in terms of credit grade and loan amount percentage Florida and New York have almost the same distribution.
+
+Next let us check the borrower Rate vs Credit Grade by IncomeRange
+
+## Borrower Rate/Prosper Rating Alpha vs Credit Grade/ProsperRating..Alpha. by Income Range
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=10}
+
+ld$EmploymentStatus <- factor(ld$EmploymentStatus, 
+                              levels=c("Employed","Full-time","Part-time",
+                                       "Self-employed","Retired","Other",
+                                       "Not employed","Not available","")
+                              )
+
+ggplot(data=subset(ld, ld$CreditGrade != "") , 
+       aes(x = BorrowerRate*100, fill = CreditGrade )) + 
+  geom_bar(position = "dodge", width = 1) + 
+  xlim(5,40)+
+  facet_wrap(~IncomeRange, ncol=1, scales = "free_y")
+
+ggplot(data=subset(ld, ld$ProsperRating..Alpha. != "") , 
+       aes(x=BorrowerRate * 100, fill=ProsperRating..Alpha.)) + 
+  geom_bar(position = "dodge", width = 1) + 
+  facet_wrap(~IncomeRange, ncol=1, scales = "free_y")
+
+```
+
+we can see the similar patterns of distribution of borrwing rates across all income range which varies by the CreditGrade/ProsperRating..Alpha.. The borrowers having lower creditgrade or prosperrating..alpha. (D,E,HR) are having interest rates greater than 0.2
+
+## Employment Status vs Borrower Rate by Credit Grade/ProsperRating..Alpha.
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot( data = subset(ld, 
+                      CreditGrade %in% c("AA","A","B","C","D")), 
+        aes(x = EmploymentStatus, y = BorrowerRate*100, 
+            fill = CreditGrade, position = "dodge")
+       ) + 
+  geom_boxplot(position = "dodge") + 
+  ylim(5,25) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+
+ggplot( data = subset( ld , 
+                   ProsperRating..Alpha. %in% c("AA","A","B","C","D")), 
+        aes(x = EmploymentStatus, y = BorrowerRate*100, 
+                    fill = ProsperRating..Alpha.)) + 
+  geom_boxplot() + 
+  ylim(5,25) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+we can see that even if group modify the plot to cateogrize by employment status, the highest credit Grade/ProposerRating..Alpa. (AA) for those "Employed" or "full time" has the lowest borrowing rate range accross all Employment status. 
+
+Consistently, we can see that the trend "Good Credit Grade or Prosper Rating" will result in lower borrowing rate is true.  
+
+Next, let's understand loss by employment status grouped by CreditGrade/Proper Rating Alpha
+
+## Employment Status vs Loss by Credit Grade
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=subset(ld, ProsperRating..Alpha. %in% c("AA","A","B","C","D")), 
+       aes(x = EmploymentStatus, y = EstimatedLoss*100, 
+           fill = ProsperRating..Alpha.)) + 
+  geom_boxplot() + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+```
+
+We can see that the estimated loss for different employement status by credit grade have almost the same consistent theme whereby borrowers with lower credit grade will have a lower estimated loss percentage.  
+
+lets check if higher loan amounts will mean higher estimated loss?
+
+## Loan Amount vs Estimated Loss by Proper Rating .. Alpha
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ld.pr.A <- subset(ld,ProsperRating..Alpha.!="", 
+                  select=c("EstimatedLoss",
+                           "LoanOriginalAmount",
+                           "ProsperRating..Alpha.",
+                           "DebtToIncomeRatio")
+                  )
+ 
+ld.pr.A[is.na(ld.pr.A)] <- 0
+
+coef(
+  lm(EstimatedLoss*100 ~ LoanOriginalAmount, 
+     data = ld.pr.A)
+  )
+
+ggplot(data=ld.pr.A, 
+       aes(x = LoanOriginalAmount, 
+           y = EstimatedLoss*100, 
+           color = ProsperRating..Alpha.)) + 
+  geom_jitter() + 
+  ylim( 0 , 20 ) + 
+  xlim( 0 , 30000 ) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  geom_abline(intercept = 10.9346917298, slope = -0.0003197143)
+
+```
+
+there is a negative correlation between esitmated loss vs loan original amount.
+
+```{r echo=FALSE}
+
+cor(ld.pr.A[ , c("EstimatedLoss","LoanOriginalAmount")])
+```
+
+
+## Debt to Income Ratio vs Estimated Loss by Proper Rating .. Alpha
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=ld.pr.A, 
+       aes(x = EstimatedLoss*100, 
+           y = DebtToIncomeRatio, 
+           color = ProsperRating..Alpha.)) + 
+  geom_point(alpha=0.5,position = position_jitter(w = 0.2, h = 0.2)) + 
+  geom_jitter() + 
+  ylim(0,1.0) +
+  xlim(0,25) +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+
+```
+
+We can see a positive correlation between Estimated loss vs Debt to Income Ratio. We also can see borrowers with poor Prosper Rating.. Alpha (D, E, HR) has higher estimated loss. There are more occurences when debt to income ratio is greater than 2.0.
+
+We can see that there is a positive correlation between estimated loss and Debt to income ratio.  
+
+```{r echo=FALSE}
+cor(ld.pr.A[ , c("EstimatedLoss","DebtToIncomeRatio")])
+```
+
+## Debt to Income Ratio vs Lender Yield by Proper Rating .. Alpha
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ggplot(data=subset(ld,ProsperRating..Alpha.!=""), 
+       aes(x = LenderYield*100, 
+           y = DebtToIncomeRatio,
+           color = ProsperRating..Alpha.)) + 
+  geom_jitter() + 
+  ylim(0,1.5) +
+  xlim(5,35) + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
+```
+
+Let's check the range of Lender Yield for this plot
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+range(
+  subset(ld,
+         ProsperRating..Alpha.!="" & 
+           DebtToIncomeRatio < 1.0 & 
+           ProsperRating..Alpha. == "A", 
+         select = c(LenderYield)
+         )
+  )
+
+```
+
+Lender Yields for low debt to income ratio (< 1.0) combined with good proper Rating Alpha (AA or A) are between 3% to 20%.  
+This means we have pick the right loans to invest in to enjoy good yields (> 10%) with minimal risk (safe borrower credit profile).  
+
+I would like to check if there are people with low debt to income ratio and good credit grade having loans defaulted or charged off.  
+
+## Loan status in (ChargedOff, Defaulted) vs Loan Amount and Debt to Income Ratio Facet by Prosper Rating Alpha or Credit Grade
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# color palette for Credit Grade
+cbPalette <- c("#ffffe5","#fff7bc","#fee391",
+               "#fec44f","#fe9929","#ec7014",
+               "#cc4c02","#993404","#662506")
+
+
+# subset the loans data to what we require for this plot
+ld.ls.cf_df <- subset(ld, 
+             LoanStatus %in% c("Chargedoff",
+                               "Defaulted",
+                               "Completed",
+                               "FinalPaymentInProgress") & 
+               DebtToIncomeRatio < 1.0, 
+             select = c(ProsperRating..Alpha.,DebtToIncomeRatio, 
+                        LoanStatus, LoanOriginalAmount, CreditGrade )
+             )
+
+# reassign the levels 
+ld.ls.cf_df$LsIndicator <- factor(ld.ls.cf_df$LoanStatus, 
+                                  levels = c("Chargedoff","Defaulted",
+                                            "Completed",
+                                            "FinalPaymentInProgress"))
+
+# group the loan status levels ChargedOff and Defaulted = Bad
+# group the loan status levels Completed, FinalPaymentsInProgress = Good
+levels(ld.ls.cf_df$LsIndicator) <- c("Bad","Bad","Good","Good")
+
+# group the levels of the debt to income Ratio by increments of 0.25 for good loans data
+ld.ls.cf_df$DebtToIncomeRatiolvl<- cut(
+  as.numeric(ld.ls.cf_df$DebtToIncomeRatio), 
+  breaks=seq(0,1,by=0.25),
+  labels=c("0.25","0.5","0.75","1.0"),
+  include.lowest = TRUE)
+
+ld.ls.cf_df.1 <- subset(ld.ls.cf_df, ProsperRating..Alpha. != "" )
+
+# group loans data set by DebtToIncomeRatiolvl,LsIndicator
+# count by DebtToIncomeRatiolvl
+# sum of loan original amount
+ld.ls.cf_df.1 <- ddply(ld.ls.cf_df.1, 
+                          c("DebtToIncomeRatiolvl","LsIndicator"), 
+                          transform,
+                          dIi_tot_cnt=length(DebtToIncomeRatiolvl),
+                          dIi_tot_sum_amt=sum(LoanOriginalAmount)
+                     )
+
+# group loans data set by DebtToIncomeRatiolvl,LsIndicator, Propser Rating
+# count by DebtToIncomeRatiolvl
+# sum of loan original amount
+ld.ls.cf_df.1 <- ddply(ld.ls.cf_df.1, 
+                          c("DebtToIncomeRatiolvl",
+                            "LsIndicator",
+                            "ProsperRating..Alpha."), 
+                          transform,
+                          dIiS_tot_cnt=length(DebtToIncomeRatiolvl),
+                          dIiS_tot_sum_amt=sum(LoanOriginalAmount)
+                     )
+
+
+# compute the segment percentages of loan amount
+ld.ls.cf_df.1$seg_Percent_la <- 
+  ld.ls.cf_df.1$dIiS_tot_sum_amt / ld.ls.cf_df.1$dIi_tot_sum_amt
+
+# compute the segment percentages of count
+ld.ls.cf_df.1$seg_Percent_cnt <- 
+  ld.ls.cf_df.1$dIiS_tot_cnt / ld.ls.cf_df.1$dIi_tot_cnt
+
+ld.ls.cf_df.1 <- distinct(
+  subset(ld.ls.cf_df.1, 
+         select=c(DebtToIncomeRatiolvl,
+                  ProsperRating..Alpha.,
+                  LsIndicator,
+                  seg_Percent_cnt)))
+
+# plot the chart
+ggplot(data = ld.ls.cf_df.1,
+       aes (x = as.factor(DebtToIncomeRatiolvl),
+            y = seg_Percent_cnt * 100, 
+            fill = ProsperRating..Alpha.)) + 
+  geom_bar(stat="identity") +
+  xlab("Debt Ratio Levels Group") +
+  ylab("Prosper Rating count Percentage (%)") +
+scale_colour_manual(values=cbPalette) + 
+  facet_wrap(~LsIndicator)
+
+arrange(
+  subset(ld.ls.cf_df.1,
+         ProsperRating..Alpha. %in% c("AA","E")),
+  LsIndicator)
+
+# Credit Grade
+
+ld.ls.cf_df.2 <- subset(ld.ls.cf_df,CreditGrade !="")
+
+# group loans data set by DebtToIncomeRatiolvl,LsIndicator
+# count by DebtToIncomeRatiolvl
+# sum of loan original amount
+ld.ls.cf_df.2 <- ddply(ld.ls.cf_df.2, 
+                          c("DebtToIncomeRatiolvl","LsIndicator"), 
+                          transform,
+                          dIi_tot_cnt=length(DebtToIncomeRatiolvl),
+                          dIi_tot_sum_amt=sum(LoanOriginalAmount)
+                     )
+
+# group loans data set by DebtToIncomeRatiolvl,LsIndicator, Credit Grade
+# count by DebtToIncomeRatiolvl
+# sum of loan original amount
+ld.ls.cf_df.2 <- ddply(ld.ls.cf_df.2, 
+                          c("DebtToIncomeRatiolvl",
+                            "LsIndicator",
+                            "CreditGrade"), 
+                          transform,
+                          dIiS1_tot_cnt=length(DebtToIncomeRatiolvl),
+                          dIiS1_tot_sum_amt=sum(LoanOriginalAmount)
+                     )
+
+
+# compute the segment percentages of loan amount
+ld.ls.cf_df.2$seg_Percent_la1 <- 
+  ld.ls.cf_df.2$dIiS1_tot_sum_amt / ld.ls.cf_df.2$dIi_tot_sum_amt
+
+# compute the segment percentages of count
+ld.ls.cf_df.2$seg_Percent_cnt1 <- 
+  ld.ls.cf_df.2$dIiS1_tot_cnt / ld.ls.cf_df.2$dIi_tot_cnt
+
+ld.ls.cf_df.2 <- distinct(
+  subset(ld.ls.cf_df.2,
+         select=c(DebtToIncomeRatiolvl,
+                  CreditGrade,
+                  LsIndicator,
+                  seg_Percent_cnt1)))
+
+# plot the chart
+ggplot(data = ld.ls.cf_df.2,
+       aes (x = as.factor(DebtToIncomeRatiolvl),
+            y = seg_Percent_cnt1 * 100, 
+            fill = CreditGrade)) + 
+  geom_bar(stat="identity") +
+  xlab("Debt Ratio Levels Group") +
+  ylab("Credit Grade count Percentage (%)") +
+scale_colour_manual(values=cbPalette) + 
+  facet_wrap(~LsIndicator)
+
+arrange(
+  subset(ld.ls.cf_df.2,
+         CreditGrade %in% c("AA","E")),
+  LsIndicator)
+
+
+
+````
+
+We can see that consistently borrowers with low debt to income ratio and good credit grade have lesser likelihood of defaulting as compared to other groups.  
+
+## Linear Model - Borrower Rates
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ld.lm_br <- lm(formula = BorrowerRate ~  
+                 ProsperScore + TotalProsperLoans + ProsperRating..Alpha. , 
+               data=ld
+               )
+
+summary(ld.lm_br)
+```
+
+We can see that prosper score, total prosper loans and propserrating.. alpha are the independent variables that are able to explain 91.59% of the variation in borrower's rate
+
+## Linear Model - Estimated Loss
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+ld.lm_el <- lm(formula = EstimatedLoss ~  
+                 ProsperScore + TotalProsperLoans + ProsperRating..Alpha. , 
+               data=ld
+               )
+
+summary(ld.lm_el)
+
+```
+
+Similarly, prosper score, total prosper loans and propserrating.. alpha are the independent variables that are able to explain 92.38% of the variation in estimated loss.
+
+## Linear Model - Lender Yield
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+ld.lm_ly <- lm(formula = LenderYield ~  
+                 ProsperScore + TotalProsperLoans + ProsperRating..Alpha. , 
+               data=ld
+               )
+
+summary(ld.lm_ly)
+
+```
+
+Similarly, prosper score, total prosper loans and propserrating.. alpha are the independent variables that are able to explain 91.59% of the variation in lender yield.
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the investigation. Were there features that strengthened each other in terms of looking at your feature(s) of interest?
+
+We can see a positive correlation between Estimated loss vs Debt to Income Ratio. We also can see borrowers with poor Prosper Rating.. Alpha (D, E, HR) has higher estimated loss. There are more occurences when debt to income ratio is greater than 2.0.
+
+### Were there any interesting or surprising interactions between features?
+
+we can observe that there are people without stated monthly income with loans greater than 20,000
+
+There is a negative correlation between esitmated loss vs loan original amount.
+My initial impression that greater loan amounts will affect estimated loss percentage.
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the strengths and limitations of your model.
+
+yes, i had created 3 linear models on Borrower Rates, Estimated Loss and Lender Yield.
+
+I had used multiple linear regression model to predict dependant variable ( BorrowerRate, EstimatedLoss) and using Adjusted R-Square to evaluate the model.
+
+The model is simple to use and understand, but linear regression is unable to predict outliers and unable to establish causation.
+
+------
+
+# Final Plots and Summary
+
+### Plot One
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.width=10, fig.height=9}
+
+# set colors for the plot
+cbPalette <- c("#ffffcc","#a1dab4",
+               "#41b6c4","#225ea8")
+
+ld.plt1 <- subset( ld , 
+                   !( EmploymentStatus %in% 
+                       c("Not available", "" 
+                         ,"Other", "Not employed","Retired")) &
+                       ListingCategory..numeric. %in% c(0,1,2,3,4,5,6,7)
+                   , select = c(ListingCategory..numeric.,
+                                ProsperRating..Alpha.,EmploymentStatus)
+                   )
+
+ggplot(data=ld.plt1, 
+       aes(x=as.numeric(ListingCategory..numeric.), 
+           fill=EmploymentStatus,
+           ymax=max(..count..)+1500000)) + 
+  geom_bar(position = "dodge",drop=TRUE) + 
+  scale_x_discrete(as.numeric(ld.plt1$ListingCategory..numeric.), 
+                     labels=c("Not Available","Debt Consolidation", 
+                              "Home Improvement","Business",
+                              "Personal Loan","Student Use",
+                              "Auto","Other"),
+                     limits=seq(0,7, by = 1))+ 
+  xlab("Listing Category") + 
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1)) + 
+  ylab("count (log10)") + 
+  ggtitle("Final Plot 1 - Why people Borrow") + 
+  stat_bin(geom="text", 
+             aes(label=ifelse(..count..==0,"",..count..), hjust = -0.2 , 
+                 position="dodge", angle = 90)
+             )   +
+  scale_y_log10( breaks = trans_breaks("log10", function(x) 10 ^ x),
+                labels = trans_format("log10", math_format(10^.x))) + 
+  scale_colour_manual(values=cbPalette) + 
+  facet_wrap(~EmploymentStatus, ncol=2)
+
+```
+
+### Description One
+
+In part one of the analysis, we explored the Listing Category to understand why people wanted to borrow.  
+I was curious if there is a trend if we plot by listing Cateogry group by PropserRating..Alpha. and facet by Employment Status?  
+
+We can see majority of the Listing Category is "NA" for all different employment status.  
+We can also see that those without Prosper Rating..Alpha constitues the majority in the Listing Category is "NA".  
+Debt Consolidation is primary reason after "NA" for borrowing accross most employment status.  
+
+From the plot, we can observe the following  
+* borrowing for "Business"" purpose has more occurences in "self employed" group then the rest   
+This make sense as self-employed borrowers would always need additional captial to make necessary investments  
+* borrowing for "Student Use" more common in "Part-time" group  
+I would think that most students work part time to supplement their income or pay for school fees.  
+
+In general, we can see a trend of people of the same employment status have the same reason for taking a loan.  
+
+From final plot one, we understand that most people do not take loans for luxury items like boats or large purchases.  
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+plt.title <- "Borrower Rates for Loans by Propser Rating"
+
+ggplot(data=subset(ld, 
+                   LoanStatus %in% c("Completed","FinalPaymentInProgress")), 
+          aes(x=ProsperRating..Alpha., y=BorrowerRate*100)) + 
+  labs(x="Prosper Rating Alpha", 
+       y="Borrower Rate (%)", 
+       title=plt.title) +   
+  ylim(5,35) +
+  geom_boxplot() 
+
+
+```
+
+### Description Two
+
+For Final plot 2, i subset the loans which were either completed or final payment phase to look at the historical BorrowerRate by proper rating.
+
+It appears that people with good credit grade will have a lower borrower rate and vice versa.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+range(
+  arrange(
+    distinct(
+      subset(ld,
+             ProsperRating..Alpha.=="AA" & 
+               DebtToIncomeRatio<1.0 & 
+               LoanStatus %in% c("Completed","FinalPaymentInProgress"),
+             select=c("BorrowerRate")
+             )
+      ),
+    desc(BorrowerRate)
+    )
+  )
+```
+
+We can see that BorrowerRate ranges from 4% to 17% for Borrowers with propser rating alpha of "AA" (Best Prosper Rating) and debt to income ratio below 1.0.  
+
+I feel that there are good investment opportunities by funding prosper loans as the borrower rates are high.
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+# subset the data to show those with bad prosper rating 
+# and loan status defaulted or charged off
+ld.plt3 <- subset(ld, 
+                   !(ProsperRating..Alpha.%in% c("D","E","HR","")) & 
+                     DebtToIncomeRatio<1.0 & 
+                     LoanStatus %in% c("Chargedoff","Defaulted"), 
+                  select=c("LoanOriginalAmount","ProsperRating..Alpha."
+                           ,"EmploymentStatus")
+                   )
+
+# perform a count on Propser Rating Alpha and Employment Status
+ld.plt3 <- ddply(ld.plt3, 
+                          c("ProsperRating..Alpha.","EmploymentStatus "), 
+                          transform,
+                          pReS_cnt=length(ProsperRating..Alpha.),
+                          pReS_tot_LoanAmt=sum(LoanOriginalAmount)
+                          )
+
+# perform a count on Propser Rating Alpha
+ld.plt3 <- ddply(ld.plt3, 
+                          c("ProsperRating..Alpha."), 
+                          transform,
+                          eS_cnt=length(ProsperRating..Alpha.),
+                          eS_tot_LoanAmt=sum(LoanOriginalAmount)
+                          )
+
+# get the count percentage for each propser rating 
+# and employement status group
+ld.plt3$pReS_cnt_percent <- ld.plt3$pReS_cnt / ld.plt3$eS_cnt
+ld.plt3$pReS_LoanAmt_percent <- as.numeric(ld.plt3$pReS_tot_LoanAmt) / 
+  as.numeric(ld.plt3$eS_tot_LoanAmt)
+
+# distinct the result set
+ld.plt3.d <- distinct(subset(ld.plt3,
+                             select=c("ProsperRating..Alpha.",
+                                      "EmploymentStatus",
+                                      "pReS_cnt_percent"
+                                      )))
+
+# mutiply the percentages by 100
+ld.plt3.d$pReS_cnt_percent <- ld.plt3.d$pReS_cnt_percent *100
+
+ggplot(data=ld.plt3.d, 
+          aes(x=ProsperRating..Alpha., 
+              y=pReS_cnt_percent,
+              fill=EmploymentStatus)) + 
+  labs(x="Propser Rating (Alpha)", 
+       y="Percentage of Borrowers (%)", 
+       title="Who Defaults most?") + 
+ geom_bar(stat="Identity") 
+```
+
+### Description Three
+
+Final Plot 3 shows a subset of loans data which were defaulted or charged off for all employment status with good Prosper Rating Alpha (AA,A,B,C) and Debt to income ratio of less than 1.0.  
+
+We can see that borrowers whom are self-employed are not shown in the plot.  
+This means that this group of borrowers had never defaulted on their loans. 
+
+let's check which are the top 5 group of borrowers that defaults  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+
+# perform a count on Propser Rating Alpha, Employment Status and loan amounts
+
+head(arrange(
+  distinct(
+  subset(ld.plt3, select=c("ProsperRating..Alpha.",
+                           "EmploymentStatus",
+                           "pReS_cnt"))), 
+         EmploymentStatus,desc(pReS_cnt)))
+
+```
+
+People with Prosper Rating C with employment status as employed are most likely to default from data set i had created.  
+
+```{r echo=FALSE, message=FALSE, warning=FALSE}
+range(
+  arrange(
+    distinct(
+      subset(ld,
+             ProsperRating..Alpha.=="AA"& 
+               EmploymentStatus=="Self-employed", 
+             select=c("LenderYield")
+             )
+      ),
+    desc(LenderYield)
+    )
+  )
+```
+
+also, we can see that these segment of "self-employed" borrowers with best prosper credit rating of "AA" have lender yields of 5% to 18.5%.  
+I would think that if i would invest in propser loans, i would invest by lending to self-employed borrowers with "AA" propser lending as the yields are attractive and risk is historically low.  
+
+------
+
+# Reflection
+
+After doing this project that i realize that R is a powerful visualization and statistical computation tool. It is very easy to compute statistics and graphs with the help of libraries like plyr, dylr and ggplot.
+
+I had trouble understanding the variables and selecting what variables to analyze.   
+Therefore, I had to more spend time reviewing almost 70% of the variables inorder to decide which variables would fit the analysis.  
+However, as i worked with the data set and understanding the variables, i found out that i was searching in an ocean and was not going anywhere.  
+That is when i realized, that i have to focus on defining the purpose of my project. So i took a break and spent time to defining the purpose and generate the questions for the project.  
+Being an avid investor, i was intriged by the risk and reward of this new peer lending system. Once, the purpose and questions are defined, the project went on smoothly.  
+
+Based on the models created we can see that 3 variables prosper score, total prosper loans and propserrating.. alpha has correlation of over 90% with BorrowerRate, Estimated Loss and Lender yield.  
+
+To improve the analysis i will need to incorporate intrest rates/data for traditional channels of credit ( credit card, bank loans and etc .. ).
+
+In the future, after i had completed the Machine Learning course, I would like to build a model to predict prosper score, determine users' probability of default and lending yields.  
+
+Personally, I feel that Prosper Loans is a viable alternative investment.  
+
+After this project, i feel that i equiped with the necessary knowledge to explore other datasets.
+
+# Reference
+
+* [How To Find Relationship Between Variables, Multiple Regression] (http://www.statsoft.com/textbook/multiple-regression)
+* [Prosper - company Overview] (https://www.prosper.com/about)
+* [GGplot from yhat] (http://ggplot.yhathq.com/)
+* [R Studio - rmarkdown reference](http://www.rstudio.com/wp-content/uploads/2015/03/rmarkdown-reference.pdf)
+* [R Graphics Cookbook] (http://www.cookbook-r.com/Graphs/index.html)
+* [Wikipedia - List of U.S. states and territories by population](http://en.wikipedia.org/wiki/List_of_U.S._states_and_territories_by_population)
+* [inside r - scales package documentation] (http://www.inside-r.org/packages/cran/scales/docs/trans_breaks)  
+* [R Style Guide] (http://adv-r.had.co.nz/Style.html)  
+* [R pandoc Markdown] (http://rmarkdown.rstudio.com/authoring_pandoc_markdown.html#paragraphs)  
+* [Stackoverflow - how to change correlation text size in ggpairs] (http://stackoverflow.com/questions/8599685/how-to-change-correlation-text-size-in-ggpairs)
+* [cran - color brewer] (http://cran.r-project.org/web/packages/RColorBrewer/index.html)
+* [color brewer] (http://colorbrewer2.org/)
